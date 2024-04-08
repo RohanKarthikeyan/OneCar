@@ -19,9 +19,12 @@ WINDOW_H = 800
 FPS = 30  ## Frames per second
 OBJ_SPEED = 7  ## Speed by which non-car objects move
 
+
 class OneCar(gym.Env):
     """
     ## Description
+    This is a One Car version of the popular `2 Cars` mobile game:
+    > Don't hit the squares. Don't miss the circles.
 
     ## Action Space
     The action shape is `(1,)` in the range `{0, 2}` indicating
