@@ -1,6 +1,7 @@
 import pygame
 import random
 import numpy as np
+import gymnasium as gym
 
 # Define game params
 SCREEN_WIDTH = 400
@@ -24,6 +25,8 @@ BLUE = (0, 0, 255)
 PURPLE = (70,30,200)
 BLUE_VIOLET = (150,156,230)
 TURQUOISE = (64,224,208)
+
+colours = [RED, TURQUOISE]
 
 
 # Defining game objects
@@ -72,38 +75,42 @@ class Car(pygame.sprite.Sprite):
 
 
 class Obstacle(pygame.sprite.Sprite):
-    def __init__(self, lane, ):
+    def __init__(self, lane, colour = TURQUOISE):
         super().__init__()
         self.image = pygame.Surface((OBSTACLE_WIDTH, OBSTACLE_HEIGHT))
-        self.image.fill(TURQUOISE)
+        self.image.fill(colour)
         self.rect = self.image.get_rect()
-        self.rect.centerx = lane * LANE_WIDTH + LANE_WIDTH // 2
+        self.rect.centerx = lane * LANE_WIDTH - LANE_WIDTH // 2
         self.rect.y = -OBSTACLE_HEIGHT
 
     def update(self, speed=GAME_SPEED):
         self.rect.y += speed
 
 class Circle(pygame.sprite.Sprite):
-    def __init__(self, lane):
+    def __init__(self, lane, colour = TURQUOISE):
         super().__init__()
         self.image = pygame.Surface((OBSTACLE_WIDTH, OBSTACLE_HEIGHT))
         self.image.fill(PURPLE)
         self.rect = self.image.get_rect()
-        self.rect.centerx = lane * LANE_WIDTH + LANE_WIDTH // 2
+        self.rect.centerx = lane * LANE_WIDTH - LANE_WIDTH // 2
         self.rect.y = -OBSTACLE_HEIGHT
 
         # pygame.draw.polygon(self.image, TURQUOISE, [(0, OBSTACLE_HEIGHT), (OBSTACLE_WIDTH // 2, 0), (OBSTACLE_WIDTH, OBSTACLE_HEIGHT)])
-        pygame.draw.circle(self.image, TURQUOISE, (OBSTACLE_WIDTH // 2, OBSTACLE_HEIGHT // 2), OBSTACLE_HEIGHT // 2)
+        pygame.draw.circle(self.image, colour, (OBSTACLE_WIDTH // 2, OBSTACLE_HEIGHT // 2), OBSTACLE_HEIGHT // 2)
 
     def update(self, speed=GAME_SPEED):
         self.rect.y += speed
 
-class GameEnv():
-    def __init__(self):
+class GameEnv(gym.Env):
+    def __init__(self, n=2):
         pygame.init()
         random.seed(random.randint(0, 100))
 
-        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        self.n_cars = n
+        self.screen_w = self.n_cars * LANE_WIDTH * 2
+        self.screen_h = SCREEN_HEIGHT
+
+        self.screen = pygame.display.set_mode((self.screen_w, self.screen_h))
         pygame.display.set_caption("2Cars Game")
         self.clock = pygame.time.Clock()
 
@@ -112,11 +119,17 @@ class GameEnv():
         self.obstacles = pygame.sprite.Group()
         self.circles = pygame.sprite.Group()
 
+        for i in range(self.n_cars):
+            car = Car(2*i+1, 2*i+2, colours[i])
+            self.cars.add(car)
+            self.all_sprites.add(car)
+            car.set_lane(2 + i)
+
         self.score = 0
         self.game_speed = GAME_SPEED
 
-        self.last_obj = None
-        self.spawn_lane = random.randint(0, 1)
+        self.last_obj = [None, None]
+        self.spawn_lane = [random.randint(1, 2), random.randint(3, 4)]
 
     def reset(self):
         self.all_sprites.empty()
@@ -132,8 +145,8 @@ class GameEnv():
         self.score = 0
         self.game_speed = GAME_SPEED
 
-        self.last_obj = None
-        self.spawn_lane = random.randint(0, 1)
+        self.last_obj = [None, None]
+        self.spawn_lane = [random.randint(1, 2), random.randint(3, 4)]
 
     def render(self):
         # draw the canvas and objects
@@ -143,10 +156,10 @@ class GameEnv():
         # display score
         font = pygame.font.SysFont(None, 50)
         text = font.render(f"{self.score}", True, WHITE)
-        self.screen.blit(text, (SCREEN_WIDTH - 40, 10))
+        self.screen.blit(text, (self.screen_w - 40, 10))
 
         # draw lanes
-        for i in range(1, 4):
+        for i in range(1, 2*self.n_cars):
             pygame.draw.line(self.screen, BLUE_VIOLET, (LANE_WIDTH * i, 0), (LANE_WIDTH * i, SCREEN_HEIGHT), 2)
         pygame.display.flip()
 
@@ -157,6 +170,32 @@ class GameEnv():
         self.clock.tick(FPS)
 
         return self._create_image_array(self.screen, (STATE_W, STATE_H))
+    
+    def step(self, action):
+        # Spawn new objects
+        self.spawn_objects()
+
+        # Update all objects
+        self.all_sprites.update(self.game_speed)
+
+        # Check for collisions or missed circles
+        terminated = False
+        if(self.has_collisions() or self.has_missed_circles()):
+            terminated = True
+
+        prev_score = self.score
+
+        # Check for collection of circles
+        self.update_score()
+        truncated = self.score >= 300
+
+        # Calculate 1-step reward
+        step_reward = self.score - prev_score
+
+        # Render the screen
+        state = self.render()
+
+        return state, step_reward, terminated, truncated, {}
 
     def has_collisions(self):
         # Check for collisions for either car
@@ -179,20 +218,21 @@ class GameEnv():
             
     def spawn_objects(self):
         # Spawn new objects
-        gap = random.choices([150,250],[0.2,0.8])[0]   # gap between objects
-        self.spawn_lane = random.choices([self.spawn_lane,1-self.spawn_lane],[0.2,0.8])[0]   # lane of the next object
-        obj = random.choices(['obstacle','circle'],[0.5,0.5])[0]   # type of the next object
-        if self.last_obj == None or self.last_obj.rect.y > gap:
-            if obj == 'obstacle':
-                obstacle = Obstacle(self.spawn_lane)
-                self.all_sprites.add(obstacle)
-                self.obstacles.add(obstacle)
-                self.last_obj = obstacle
-            else:
-                circle = Circle(self.spawn_lane)
-                self.all_sprites.add(circle)
-                self.circles.add(circle)
-                self.last_obj = circle
+        for i in range (self.n_cars):
+            gap = random.choices([150,250],[0.2,0.8])[0]   # gap between objects
+            if self.last_obj[i] == None or self.last_obj[i].rect.y > gap:
+                self.spawn_lane[i] = random.choices([self.spawn_lane[i], 4*i-self.spawn_lane[i]+3],[0.2,0.8])[0]   # lane of the next object
+                obj = random.choices(['obstacle','circle'],[0.55,0.45])[0]   # type of the next object   
+                if obj == 'obstacle':
+                    obstacle = Obstacle(self.spawn_lane[i], colours[i])
+                    self.all_sprites.add(obstacle)
+                    self.obstacles.add(obstacle)
+                    self.last_obj[i] = obstacle
+                else:
+                    circle = Circle(self.spawn_lane[i], colours[i])
+                    self.all_sprites.add(circle)
+                    self.circles.add(circle)
+                    self.last_obj[i] = circle
 
     def _create_image_array(self, screen, size):
         scaled_screen = pygame.transform.smoothscale(screen, size)
@@ -210,36 +250,17 @@ class GameEnv():
 
 if __name__ == "__main__":
 
-    env = GameEnv()
-
-    car1 = Car(1, 2, TURQUOISE)
-    car2 = Car(3, 4, RED)
-    env.cars.add(car1)
-    env.cars.add(car2)
-    env.all_sprites.add(car1)
-    env.all_sprites.add(car2)
+    env = GameEnv(n=1)
 
     # Game loop
-    running = True
-    while running:
+    terminated = False
+    while not terminated:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                running = False
-                
-        # Spawn new objects
-        env.spawn_objects()
-
-        # Update all objects
-        env.all_sprites.update(env.game_speed)
-
-        # Check for collisions or missed circles
-        if(env.has_collisions() or env.has_missed_circles()):
-            running = False
-
-        # Check for collection of circles
-        env.update_score()
-
-        # Render the screen
-        env.render()
-
+                terminated = True
+        
+        # random policy for now
+        action = random.randint(0,2)
+        s, r, terminated, truncated, info = env.step(0)
+        
     pygame.quit()
