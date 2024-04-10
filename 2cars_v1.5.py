@@ -2,6 +2,7 @@ import pygame
 import random
 import numpy as np
 import gymnasium as gym
+import matplotlib.pyplot as plt
 
 # Define game params
 SCREEN_WIDTH = 400
@@ -19,12 +20,12 @@ FPS = 30
 # rgb colors
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
-RED = (255, 0, 0)
+RED = (245, 30, 80)
 GREEN = (0, 255, 0)
 BLUE = (0, 0, 255)
-PURPLE = (70,30,200)
+PURPLE = (28, 46, 121)
 BLUE_VIOLET = (150,156,230)
-TURQUOISE = (64,224,208)
+TURQUOISE = (51,204,204)
 
 colours = [RED, TURQUOISE]
 
@@ -101,7 +102,7 @@ class Circle(pygame.sprite.Sprite):
     def update(self, speed=GAME_SPEED):
         self.rect.y += speed
 
-class GameEnv(gym.Env):
+class GameEnv():
     def __init__(self, n=2):
         pygame.init()
         random.seed(random.randint(0, 100))
@@ -110,8 +111,6 @@ class GameEnv(gym.Env):
         self.screen_w = self.n_cars * LANE_WIDTH * 2
         self.screen_h = SCREEN_HEIGHT
 
-        self.screen = pygame.display.set_mode((self.screen_w, self.screen_h))
-        pygame.display.set_caption("2Cars Game")
         self.clock = pygame.time.Clock()
 
         self.all_sprites = pygame.sprite.Group()
@@ -132,6 +131,7 @@ class GameEnv(gym.Env):
         self.spawn_lane = [random.randint(1, 2), random.randint(3, 4)]
 
     def reset(self):
+
         self.all_sprites.empty()
         self.obstacles.empty()
         self.circles.empty()
@@ -148,12 +148,17 @@ class GameEnv(gym.Env):
         self.last_obj = [None, None]
         self.spawn_lane = [random.randint(1, 2), random.randint(3, 4)]
 
+        self.screen = pygame.display.set_mode((self.screen_w, self.screen_h))
+        pygame.display.set_caption("2Cars Game")
+
+        return self.render()
+
     def render(self):
         # draw the canvas and objects
         self.screen.fill(PURPLE)
         self.all_sprites.draw(self.screen)
 
-        # display score
+        # display score - IMPORTANT: comment this part out when capturing frames for training
         font = pygame.font.SysFont(None, 50)
         text = font.render(f"{self.score}", True, WHITE)
         self.screen.blit(text, (self.screen_w - 40, 10))
@@ -164,7 +169,7 @@ class GameEnv(gym.Env):
         pygame.display.flip()
 
         # increase game speed with time proportional to score
-        self.game_speed += (self.score * 0.0001)
+        self.game_speed += (self.score * 0.00001)
 
         # cap the frame rate
         self.clock.tick(FPS)
@@ -250,9 +255,13 @@ class GameEnv(gym.Env):
 
 if __name__ == "__main__":
 
-    env = GameEnv(n=1)
+    env = GameEnv(n=2)
+
+    # reset_output = env.reset()
+    # plt.imshow(reset_output)
 
     # Game loop
+    env.reset()
     terminated = False
     while not terminated:
         for event in pygame.event.get():
