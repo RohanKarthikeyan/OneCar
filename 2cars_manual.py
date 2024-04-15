@@ -119,8 +119,8 @@ class GameEnv():
             car.set_lane(2 + i)
 
             # Initialize last object and spawn lane for each car
-            self.last_obj[i] = None
-            self.spawn_lane[i] = random.randint(2*i+1, 2*i+2)
+            self.last_obj.append(None)
+            self.spawn_lane.append(random.randint(2*i+1, 2*i+2))
 
         # Initialize gameplay parameters
         self.score = 0
