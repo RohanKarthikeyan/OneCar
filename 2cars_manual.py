@@ -12,8 +12,8 @@ STATE_H = 96
 LANE_WIDTH = SCREEN_WIDTH // 4     # There are 4 lanes in total
 CAR_WIDTH = SCREEN_WIDTH*3//40
 CAR_HEIGHT = SCREEN_HEIGHT*3//40
-OBSTACLE_WIDTH = SCREEN_WIDTH/20
-OBSTACLE_HEIGHT = SCREEN_WIDTH/20
+OBSTACLE_WIDTH = SCREEN_WIDTH//20
+OBSTACLE_HEIGHT = SCREEN_WIDTH//20
 GAME_SPEED = 7
 FPS = 30
 
@@ -106,17 +106,20 @@ class GameEnv():
         self.obstacles = pygame.sprite.Group()
         self.circles = pygame.sprite.Group()
 
+        self.last_obj = []
+        self.spawn_lane = []
+
         for i in range(self.n_cars):
             car = Car(2*i+1, 2*i+2, colours[i])
             self.cars.add(car)
             self.all_sprites.add(car)
             car.set_lane(2 + i)
 
+            self.last_obj[i] = None
+            self.spawn_lane[i] = random.randint(2*i+1, 2*i+2)
+
         self.score = 0
         self.game_speed = GAME_SPEED
-
-        self.last_obj = [None, None]
-        self.spawn_lane = [random.randint(1, 2), random.randint(3, 4)]
 
     def reset(self):
 
