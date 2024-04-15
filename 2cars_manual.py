@@ -1,7 +1,7 @@
 import pygame
 import random
 import numpy as np
-import gymnasium as gym
+# import gymnasium as gym
 import matplotlib.pyplot as plt
 
 # Define game params
@@ -53,26 +53,13 @@ class Car(pygame.sprite.Sprite):
     def set_lane(self, lane):
         self.rect.centerx = (2*lane - 1) * LANE_WIDTH // 2
 
-    def update(self, speed=GAME_SPEED):
-        keys = pygame.key.get_pressed()
-        if self.lane_start == 1 and self.lane_end == 2:
-            if keys[pygame.K_a]:
-                # if left key is pressed AND car is in right lane, move the car to the left lane
-                if self.get_lane() == self.lane_end:
-                    self.set_lane(self.lane_start)
-            elif keys[pygame.K_d]:
-                # if right key is pressed AND car is in left lane, move the car to the right lane
-                if self.get_lane() == self.lane_start:
-                    self.set_lane(self.lane_end)
-        elif self.lane_start == 3 and self.lane_end == 4:
-            if keys[pygame.K_LEFT]:
-                # if left key is pressed AND car is in right lane, move the car to the left lane
-                if self.get_lane() == self.lane_end:
-                    self.set_lane(self.lane_start)
-            elif keys[pygame.K_RIGHT]:
-                # if right key is pressed AND car is in left lane, move the car to the right lane
-                if self.get_lane() == self.lane_start:
-                    self.set_lane(self.lane_end)
+    def update(self, actions):
+        action = actions[(self.lane_start-1)//2]
+        if action==1 or action==2:
+            if self.get_lane() == self.lane_start:
+                self.set_lane(self.lane_end)
+            else:
+                self.set_lane(self.lane_start)
 
 
 class Obstacle(pygame.sprite.Sprite):
@@ -102,6 +89,7 @@ class Circle(pygame.sprite.Sprite):
     def update(self, speed=GAME_SPEED):
         self.rect.y += speed
 
+# class GameEnv(gym.Env):
 class GameEnv():
     def __init__(self, n=2):
         pygame.init()
@@ -176,12 +164,15 @@ class GameEnv():
 
         return self._create_image_array(self.screen, (STATE_W, STATE_H))
     
-    def step(self, action):
+    def step(self, actions):
         # Spawn new objects
         self.spawn_objects()
 
         # Update all objects
-        self.all_sprites.update(self.game_speed)
+        # self.all_sprites.update(self.game_speed)
+        self.circles.update(self.game_speed)
+        self.obstacles.update(self.game_speed)
+        self.cars.update(actions)
 
         # Check for collisions or missed circles
         terminated = False
@@ -240,7 +231,12 @@ class GameEnv():
                     self.last_obj[i] = circle
 
     def _create_image_array(self, screen, size):
-        scaled_screen = pygame.transform.smoothscale(screen, size)
+        # Crop the screen to remove the score
+        cropped = pygame.Surface((self.screen_w, self.screen_h-40))
+        cropped.blit(screen, (0, 0), (0, 40, self.screen_w, self.screen_h))
+        
+        # Resize the screen as per DQN requirements and return as image array
+        scaled_screen = pygame.transform.smoothscale(cropped, size)
         return np.transpose(
             np.array(pygame.surfarray.pixels3d(scaled_screen)), axes=(1, 0, 2)
         )
@@ -257,19 +253,31 @@ if __name__ == "__main__":
 
     env = GameEnv(n=2)
 
-    # reset_output = env.reset()
-    # plt.imshow(reset_output)
+    # reset_return = env.reset()
+    # plt.imshow(reset_return)
+    frame_buffer = []
 
     # Game loop
     env.reset()
     terminated = False
+    t=0
     while not terminated:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 terminated = True
         
         # random policy for now
-        action = random.randint(0,2)
-        s, r, terminated, truncated, info = env.step(0)
+        actions=[0,0]
+        if t!=0 and t%10==0:
+            actions = [random.randint(0,1), random.randint(0,1)]    # 0: stay, 1: left, 2: right
+            t=-1
+
+        s, r, terminated, truncated, info = env.step(actions)
+        frame_buffer.append(s)
+        t+=1
         
     pygame.quit()
+
+    # for frame in frame_buffer:
+    #     plt.imshow(frame)
+    #     plt.pause(0.001)
