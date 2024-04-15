@@ -95,34 +95,39 @@ class GameEnv():
         pygame.init()
         random.seed(random.randint(0, 100))
 
+        # Initialize game screen depending on number of cars
         self.n_cars = n
         self.screen_w = self.n_cars * LANE_WIDTH * 2
         self.screen_h = SCREEN_HEIGHT
 
         self.clock = pygame.time.Clock()
 
+        # Initialize groups for storing game objects
         self.all_sprites = pygame.sprite.Group()
         self.cars = pygame.sprite.Group()
         self.obstacles = pygame.sprite.Group()
         self.circles = pygame.sprite.Group()
 
-        self.last_obj = []
-        self.spawn_lane = []
+        self.last_obj = []    # last_obj: last object spawned for each car
+        self.spawn_lane = []  # spawn_lane: lane in which the next object will be spawned for each car
 
+        # Initialize cars
         for i in range(self.n_cars):
             car = Car(2*i+1, 2*i+2, colours[i])
             self.cars.add(car)
             self.all_sprites.add(car)
             car.set_lane(2 + i)
 
+            # Initialize last object and spawn lane for each car
             self.last_obj[i] = None
             self.spawn_lane[i] = random.randint(2*i+1, 2*i+2)
 
+        # Initialize gameplay parameters
         self.score = 0
         self.game_speed = GAME_SPEED
 
     def reset(self):
-
+        # Reset game environment
         self.all_sprites.empty()
         self.obstacles.empty()
         self.circles.empty()
@@ -136,8 +141,9 @@ class GameEnv():
         self.score = 0
         self.game_speed = GAME_SPEED
 
-        self.last_obj = [None, None]
-        self.spawn_lane = [random.randint(1, 2), random.randint(3, 4)]
+        # Initialize last object and spawn lane for each car
+        self.last_obj = [None] * self.n_cars
+        self.spawn_lane = [random.randint(2*i+1, 2*i+2) for i in range(self.n_cars)]
 
         self.screen = pygame.display.set_mode((self.screen_w, self.screen_h))
         pygame.display.set_caption("2Cars Game")
@@ -165,6 +171,7 @@ class GameEnv():
         # cap the frame rate
         self.clock.tick(FPS)
 
+        # return the screen as an image array
         return self._create_image_array(self.screen, (STATE_W, STATE_H))
     
     def step(self, actions):
@@ -218,9 +225,13 @@ class GameEnv():
     def spawn_objects(self):
         # Spawn new objects
         for i in range (self.n_cars):
-            gap = random.choices([150,250],[0.2,0.8])[0]   # gap between objects
+            # Choose a random spawning gap between 150 and 250
+            gap = random.choices([150,250],[0.2,0.8])[0]
+
             if self.last_obj[i] == None or self.last_obj[i].rect.y > gap:
-                self.spawn_lane[i] = random.choices([self.spawn_lane[i], 4*i-self.spawn_lane[i]+3],[0.2,0.8])[0]   # lane of the next object
+                # Randomly choose the lane in which the next object will be spawned
+                self.spawn_lane[i] = random.choices([self.spawn_lane[i], 4*i-self.spawn_lane[i]+3],[0.2,0.8])[0]
+                # Randomly choose the type of the next object
                 obj = random.choices(['obstacle','circle'],[0.55,0.45])[0]   # type of the next object   
                 if obj == 'obstacle':
                     obstacle = Obstacle(self.spawn_lane[i], colours[i])
@@ -245,6 +256,7 @@ class GameEnv():
         )
     
     def close(self):
+        # Close the game environment
         if self.screen is not None:
             pygame.display.quit()
             self.isopen = False
@@ -256,31 +268,36 @@ if __name__ == "__main__":
 
     env = GameEnv(n=2)
 
-    # reset_return = env.reset()
-    # plt.imshow(reset_return)
     frame_buffer = []
 
-    # Game loop
+    # Start Game
     env.reset()
     terminated = False
     t=0
+
+    # Game loop
     while not terminated:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 terminated = True
         
-        # random policy for now
+        # Actions are taken once in 10 frames
         actions=[0,0]
         if t!=0 and t%10==0:
+            # random policy for now
             actions = [random.randint(0,1), random.randint(0,1)]    # 0: stay, 1: left, 2: right
             t=-1
 
         s, r, terminated, truncated, info = env.step(actions)
+        
+        # Append the frame (game screen) to buffer
         frame_buffer.append(s)
+
         t+=1
         
     pygame.quit()
 
+    # # Display the frames
     # for frame in frame_buffer:
     #     plt.imshow(frame)
     #     plt.pause(0.001)
