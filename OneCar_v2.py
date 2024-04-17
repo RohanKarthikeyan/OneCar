@@ -16,19 +16,19 @@ CAR_WIDTH = VIDEO_W*3//40
 CAR_HEIGHT = VIDEO_H*3//40
 OBSTACLE_WIDTH = VIDEO_W//20
 OBSTACLE_HEIGHT = VIDEO_W//20
-OBJ_SPEED = 7  ## Speed by which non-car objects move
 
 # Colors
 WHITE = (255, 255, 255)
 RED = (245, 30, 80)
 PURPLE = (28, 46, 121)
 TURQUOISE = (51, 204, 204)
-BLUE_VIOLET = (150,156,230)
+BLUE_VIOLET = (150, 156, 230)
 colors = [RED, TURQUOISE]
 
 STATE_W = 96
 STATE_H = 96
 FPS = 30  ## Frames per second
+
 
 class OneCarEnv(gym.Env):
     """
@@ -76,14 +76,14 @@ class OneCarEnv(gym.Env):
             self.spawn_lane.append(random.randint(2*i+1, 2*i+2))
 
         self.score = 0
-        self.game_speed = OBJ_SPEED
+        self.game_speed = 7
 
         self.observation_space = spaces.Box(
             low=0, high=255, shape=(STATE_H, STATE_W, 3), dtype=np.uint8
             )
         self.action_space = spaces.Discrete(3)  # Do nothing, left, right
 
-    def reset(self, *, seed = None):
+    def reset(self, *, seed = None, options=None):
         super().reset(seed=seed)
 
         self.all_sprites.empty()
@@ -97,7 +97,7 @@ class OneCarEnv(gym.Env):
             i += 1
 
         self.score = 0
-        self.game_speed = OBJ_SPEED
+        self.game_speed = 7
 
         # Initialize last object and spawn lane for each car
         self.last_obj = [None] * self.n_cars
@@ -105,7 +105,7 @@ class OneCarEnv(gym.Env):
 
         self.screen = pygame.display.set_mode((self.screen_w, self.screen_h))
         if self.render_mode == "human":
-            self.render(self.render_mode)
+            self.render()
         return self.step(action=0)[0], {}  # Gym's LunarLander env
 
     def _hit_obstacle(self):
@@ -183,19 +183,25 @@ class OneCarEnv(gym.Env):
         # Step 3: Introduce new non-car objects
         self._spawn_objects()
 
-        self.state = self.render("state_pixels")  # From CarRacing L561
+        self.state = self._render("state_pixels")  # From CarRacing L561
 
         if self.render_mode == "human":
-            self.render(self.render_mode)
+            self.render()
         return self.state, step_reward, terminated, truncated, {}
 
-    def render(self, mode):
-        if mode is None:
+    def render(self):
+        if self.render_mode is None:
+            assert self.spec is not None
             gym.logger.warn(
                 "You are calling render method without specifying any render mode. "
                 "Do specify the render_mode at initialization."
             )
             return
+        else:
+            return self._render(self.render_mode)
+
+    def _render(self, mode):
+        assert mode in self.metadata["render_modes"]
 
         self.surf = pygame.Surface((VIDEO_W, VIDEO_H))
 
@@ -203,7 +209,7 @@ class OneCarEnv(gym.Env):
         self.surf.fill(PURPLE)  # Earlier self.screen
         self.all_sprites.draw(self.surf)  # Earlier self.screen
 
-        # display score - IMPORTANT: comment this part out when capturing frames for training
+        # display score
         font = pygame.font.SysFont(None, 50)
         text = font.render(f"{self.score}", True, WHITE)
         self.surf.blit(text, (self.screen_w - 40, 10))  # Earlier self.screen
@@ -214,7 +220,7 @@ class OneCarEnv(gym.Env):
                              (self.lane_width * i, 0),
                              (self.lane_width * i, VIDEO_H), 2)
 
-        # self.surf = pygame.transform.flip(self.surf, False, True)  # New addition
+        # self.surf = pygame.transform.flip(self.surf, False, True)
         # pygame.display.flip()  # Earlier uncommented
 
         # increase game speed with time proportional to score
@@ -263,13 +269,6 @@ if __name__ == "__main__":
             if event.type == pygame.QUIT:
                 game_quit = True
 
-            # if event.type == pygame.KEYDOWN:
-            #     if event.key == pygame.K_LEFT:
-            #         action[0] = 1
-            #     if event.key == pygame.K_RIGHT:
-            #         action[0] = 2
-            #     if event.key == pygame.K_ESCAPE:
-            #         game_quit = True
         keys = pygame.key.get_pressed()
         if keys[pygame.K_LEFT]:
             action[0] = 1
@@ -284,7 +283,6 @@ if __name__ == "__main__":
         total_score = 0
 
         while True:
-            # action = env.action_space.sample()
             register_input()
             s, r, terminated, truncated, info = env.step(action[0])
             total_score += r
