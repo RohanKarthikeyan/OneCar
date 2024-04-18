@@ -27,7 +27,7 @@ colors = [RED, TURQUOISE]
 
 STATE_W = 96
 STATE_H = 96
-FPS = 30  ## Frames per second
+FPS = 45  ## Frames per second
 
 
 class OneCarEnv(gym.Env):
@@ -76,7 +76,7 @@ class OneCarEnv(gym.Env):
             self.spawn_lane.append(random.randint(2*i+1, 2*i+2))
 
         self.score = 0
-        self.game_speed = 7
+        self.game_speed = 13
 
         self.observation_space = spaces.Box(
             low=0, high=255, shape=(STATE_H, STATE_W, 3), dtype=np.uint8
@@ -97,7 +97,7 @@ class OneCarEnv(gym.Env):
             i += 1
 
         self.score = 0
-        self.game_speed = 7
+        self.game_speed = 13
 
         # Initialize last object and spawn lane for each car
         self.last_obj = [None] * self.n_cars
