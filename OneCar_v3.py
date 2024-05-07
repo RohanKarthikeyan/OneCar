@@ -5,12 +5,15 @@ import gymnasium as gym
 from gymnasium import spaces
 from gymnasium.error import InvalidAction
 
-from objects_v2 import Car, Obstacle, Circle
+from objects_v3 import Car, Obstacle, Circle
 import pygame
 
 # Define game params.
+STATE_W = 96
+STATE_H = 96
 VIDEO_W = 400
 VIDEO_H = 600
+FPS = 45  ## Frames per second
 
 CAR_WIDTH = VIDEO_W*3//40
 CAR_HEIGHT = VIDEO_H*3//40
@@ -25,10 +28,6 @@ TURQUOISE = (51, 204, 204)
 BLUE_VIOLET = (150, 156, 230)
 colors = [RED, TURQUOISE]
 
-STATE_W = 96
-STATE_H = 96
-FPS = 45  ## Frames per second
-
 
 class OneCarEnv(gym.Env):
     """
@@ -42,7 +41,7 @@ class OneCarEnv(gym.Env):
         "render_fps": FPS
     }
 
-    def __init__(self, render_mode=None):
+    def __init__(self, render_mode=None, continuous=True):
         assert render_mode is None or render_mode in self.metadata["render_modes"]
         self.render_mode = render_mode
 
@@ -51,19 +50,20 @@ class OneCarEnv(gym.Env):
 
         self.n_cars = 1
         self.lane_width = VIDEO_W // (2*self.n_cars)   # There are 2n_cars lanes in total
-        self.screen_w = self.n_cars * self.lane_width * 2
+        self.screen_w = 2 * self.lane_width * self.n_cars
         self.screen_h = VIDEO_H
 
+        self.continuous = continuous
         self.isopen = True
-        self.clock = pygame.time.Clock()
+        self.clock = None
 
         self.all_sprites = pygame.sprite.Group()
         self.cars = pygame.sprite.Group()
         self.obstacles = pygame.sprite.Group()
         self.circles = pygame.sprite.Group()
 
-        self.last_obj = []    # last_obj: last object spawned for each car
-        self.spawn_lane = []  # spawn_lane: lane in which the next object will be spawned for each car
+        self.last_obj = []    # last_obj: last object introduced onto the field
+        self.spawn_lane = []  # spawn_lane: lane in which the next object will be introduced
 
         for i in range(self.n_cars):
             car = Car(2*i+1, 2*i+2, colors[i])
@@ -71,17 +71,23 @@ class OneCarEnv(gym.Env):
             self.all_sprites.add(car)
             car.set_lane(2 + i)
 
-            # Initialize last object and spawn lane for each car
             self.last_obj.append(None)
             self.spawn_lane.append(random.randint(2*i+1, 2*i+2))
 
         self.score = 0
-        self.game_speed = 13
+        self.prev_score = 0
+        self.game_speed = 19
 
         self.observation_space = spaces.Box(
             low=0, high=255, shape=(STATE_H, STATE_W, 3), dtype=np.uint8
             )
-        self.action_space = spaces.Discrete(3)  # Do nothing, left, right
+
+        if self.continuous:
+            # -1 for left, 0 for nothing, 1 for right
+            self.action_space = spaces.Box(low=-1, high=1)
+        else:
+            # 1 for left, 0 for nothing, 2 for right
+            self.action_space = spaces.Discrete(3)
 
     def reset(self, *, seed = None, options=None):
         super().reset(seed=seed)
@@ -97,16 +103,20 @@ class OneCarEnv(gym.Env):
             i += 1
 
         self.score = 0
-        self.game_speed = 13
+        self.prev_score = 0
+        self.game_speed = 19
 
         # Initialize last object and spawn lane for each car
         self.last_obj = [None] * self.n_cars
         self.spawn_lane = [random.randint(2*i+1, 2*i+2) for i in range(self.n_cars)]
 
-        self.screen = pygame.display.set_mode((self.screen_w, self.screen_h))
+        self.screen = pygame.display.set_mode((VIDEO_W, VIDEO_H))
         if self.render_mode == "human":
             self.render()
-        return self.step(action=0)[0], {}  # Gym's LunarLander env
+        if self.continuous:
+            return self.step(action=[0.0])[0], {}  # Gym's LunarLander env
+        else:
+            return self.step(action=0)[0], {}
 
     def _hit_obstacle(self):
         # Check for collisions for either car
@@ -157,31 +167,42 @@ class OneCarEnv(gym.Env):
         3. New non-car objects might be introduced onto the field.
         """
         # Check if the action is a valid action
-        if not self.action_space.contains(action):
-            raise InvalidAction(
-                f"You passed the invalid action `{action}`. " 
-                f"The supported action_space is `{self.action_space}`"  
-            )
+        if self.continuous:
+            self.cars.update(action[0], self.continuous)
+        else:
+            if not self.action_space.contains(action):
+                raise InvalidAction(
+                    f"You passed the invalid action `{action}`. " 
+                    f"The supported action_space is `{self.action_space}`"  
+                )
+            self.cars.update(action, self.continuous)
 
-        # Step 1: Which direction does the car want to move? Then move.
+        # Introduce new non-car objects
+        self._spawn_objects()
+
+        # Which direction does the car want to move? Then move.
         self.circles.update(self.game_speed)
         self.obstacles.update(self.game_speed)
-        self.cars.update(action)
+        # self.cars.update(action)
+
+        for obstacle in self.obstacles:  # Kill the obstacles we have dodged
+            if obstacle.rect.y > self.screen_h - OBSTACLE_HEIGHT:
+                obstacle.kill()
 
         step_reward = 0
         terminated = False
         truncated = False
-        # Step 2: Check for collisions or missed circles
+        # Check for collisions or missed circles
         if(self._hit_obstacle() or self._has_missed_circles()):
+            step_reward = -10  # New addition
             terminated = True
 
-        prev_score = self.score
+        # Update the score
+        self.prev_score = self.score
         self._update_score()  # Check if circles have been collected
-        step_reward = self.score - prev_score  # Calculate 1-step reward
-        truncated = self.score >= 200
-
-        # Step 3: Introduce new non-car objects
-        self._spawn_objects()
+        step_reward = self.score - self.prev_score
+        if self.score >= 200:
+            truncated = True
 
         self.state = self._render("state_pixels")  # From CarRacing L561
 
@@ -203,6 +224,8 @@ class OneCarEnv(gym.Env):
     def _render(self, mode):
         assert mode in self.metadata["render_modes"]
 
+        if self.clock is None:
+            self.clock = pygame.time.Clock()
         self.surf = pygame.Surface((VIDEO_W, VIDEO_H))
 
         # draw the canvas and objects
@@ -224,7 +247,7 @@ class OneCarEnv(gym.Env):
         # pygame.display.flip()  # Earlier uncommented
 
         # increase game speed with time proportional to score
-        self.game_speed += (self.score * 0.00001)
+        # self.game_speed += (self.score * 0.00001)
 
         if mode == "human":
             pygame.event.pump()
@@ -243,7 +266,7 @@ class OneCarEnv(gym.Env):
 
     def _create_image_array(self, screen, size):
         # Crop the screen to remove the score
-        cropped = pygame.Surface((self.screen_w, self.screen_h-40))
+        cropped = pygame.Surface((self.screen_w, self.screen_h - 40))
         cropped.blit(screen, (0, 0), (0, 40, self.screen_w, self.screen_h))
 
         # Resize the screen
@@ -261,7 +284,7 @@ class OneCarEnv(gym.Env):
 
 if __name__ == "__main__":
     env = OneCarEnv(render_mode="human")
-    action = np.array([0])  # following CarRacing
+    action = np.array([0.0])  # following CarRacing
 
     def register_input():
         global game_quit
@@ -271,20 +294,20 @@ if __name__ == "__main__":
 
         keys = pygame.key.get_pressed()
         if keys[pygame.K_LEFT]:
-            action[0] = 1
+            action[0] = -1.0
         elif keys[pygame.K_RIGHT]:
-            action[0] = 2
+            action[0] = 1.0
         elif keys[pygame.K_ESCAPE]:
             game_quit = True
 
     game_quit = False
     while not game_quit:
         env.reset()
-        total_score = 0
+        total_score = 0.0
 
         while True:
             register_input()
-            s, r, terminated, truncated, info = env.step(action[0])
+            s, r, terminated, truncated, info = env.step(action)
             total_score += r
             if terminated or truncated or game_quit:
                 break

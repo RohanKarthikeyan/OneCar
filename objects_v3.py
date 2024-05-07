@@ -10,19 +10,13 @@ CAR_HEIGHT = SCREEN_HEIGHT*3//40
 
 OBSTACLE_WIDTH = SCREEN_WIDTH//20
 OBSTACLE_HEIGHT = SCREEN_WIDTH//20
-OBJ_SPEED = 7
 
 # Colors
-RED = (245, 30, 80)
 PURPLE = (28, 46, 121)
-TURQUOISE = (51, 204, 204)
 
 # Defining the objects
 class Car(pygame.sprite.Sprite):
-    """
-    A basic Car object.
-    """
-    def __init__(self, lane_start, lane_end, colour=RED):
+    def __init__(self, lane_start, lane_end, colour):
         super().__init__()
         self.image = pygame.Surface((CAR_WIDTH, CAR_HEIGHT))
         self.image.fill(colour)
@@ -35,27 +29,30 @@ class Car(pygame.sprite.Sprite):
     def get_lane(self):
         if (self.rect.centerx == (2*self.lane_end - 1) * LANE_WIDTH // 2):
             return self.lane_end
-        elif (self.rect.centerx == (2*self.lane_start - 1) * LANE_WIDTH // 2):
-            return self.lane_start
+        # elif (self.rect.centerx == (2*self.lane_start - 1) * LANE_WIDTH // 2):
+        #     return self.lane_start
         else:
-            return -1
+            return self.lane_start
 
     def set_lane(self, lane):
         self.rect.centerx = (2*lane - 1) * LANE_WIDTH // 2
 
-    def update(self, action):
-        # 0: do nothing, 1: left, 2: right
-        # action = actions[(self.lane_start-1)//2]
-        if action==2 and self.get_lane() == self.lane_start:
-            self.set_lane(self.lane_end)
-        elif action==1 and self.get_lane() == self.lane_end:
-            self.set_lane(self.lane_start)
+    def update(self, action, continuous):
+        if continuous:
+            # action < -0.25: left, > 0.25: right
+            if action >= 0.25 and self.get_lane() == self.lane_start:
+                self.set_lane(self.lane_end)
+            elif action <= -0.25 and self.get_lane() == self.lane_end:
+                self.set_lane(self.lane_start)
+        else:
+            # 1: left, 0: do nothing, 2: right
+            if action == 2 and self.get_lane() == self.lane_start:
+                self.set_lane(self.lane_end)
+            elif action == 1 and self.get_lane() == self.lane_end:
+                self.set_lane(self.lane_start)
 
 class Obstacle(pygame.sprite.Sprite):
-    """
-    The obstacle object.
-    """
-    def __init__(self, lane, colour = TURQUOISE):
+    def __init__(self, lane, colour):
         super().__init__()
         self.image = pygame.Surface((OBSTACLE_WIDTH, OBSTACLE_HEIGHT))
         self.image.fill(colour)
@@ -63,14 +60,11 @@ class Obstacle(pygame.sprite.Sprite):
         self.rect.centerx = lane * LANE_WIDTH - LANE_WIDTH // 2
         self.rect.y = -OBSTACLE_HEIGHT
 
-    def update(self, speed=OBJ_SPEED):
+    def update(self, speed):
         self.rect.y += speed
 
 class Circle(pygame.sprite.Sprite):
-    """
-    The circle object.
-    """
-    def __init__(self, lane, colour = TURQUOISE):
+    def __init__(self, lane, colour):
         super().__init__()
         self.image = pygame.Surface((OBSTACLE_WIDTH, OBSTACLE_HEIGHT))
         self.image.fill(PURPLE)
@@ -82,5 +76,5 @@ class Circle(pygame.sprite.Sprite):
                            (OBSTACLE_WIDTH // 2, OBSTACLE_HEIGHT // 2),
                             OBSTACLE_HEIGHT // 2)
 
-    def update(self, speed=OBJ_SPEED):
+    def update(self, speed):
         self.rect.y += speed
